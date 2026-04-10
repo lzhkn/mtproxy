@@ -23,7 +23,7 @@
 ## ⚡ Быстрая установка
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/your-repo/mtproxy/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lzhkn/mtproxy/main/install.sh | bash
 ```
 
 Или вручную по шагам ниже.
