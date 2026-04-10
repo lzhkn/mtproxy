@@ -54,7 +54,6 @@ docker --version
 sudo apt install -y ufw
 
 sudo ufw allow 443/tcp
-sudo ufw allow 22/tcp   # не забудь SSH!
 sudo ufw enable
 sudo ufw reload
 sudo ufw status
