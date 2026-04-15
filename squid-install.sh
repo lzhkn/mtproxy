@@ -69,35 +69,7 @@ ask_connection_params() {
     log_step "Параметры подключения к прокси..."
 
     echo ""
-    echo -e "  Укажи IP-адреса клиентов, которым разрешено подключаться."
-    echo -e "  Формат: одно значение на строку, можно с портом (например: 1.2.3.4 или 1.2.3.4:8080)"
-    echo -e "  Можно указать подсеть: 192.168.1.0/24"
-    echo -e "  ${YELLOW}Оставь пустым и нажми Enter — принимать подключения отовсюду.${NC}"
-    echo ""
-
-    local entries=()
-    while true; do
-        read -rp "  IP клиента (или Enter для завершения): " entry
-        [[ -z "$entry" ]] && break
-        entries+=("$entry")
-    done
-
-    # Парсим записи: разделяем IP и порт если указан через двоеточие
-    ALLOWED_IPS=()
-    ALLOWED_PORTS=()
-    for entry in "${entries[@]}"; do
-        if [[ "$entry" =~ ^([^:]+):([0-9]+)$ ]]; then
-            ALLOWED_IPS+=("${BASH_REMATCH[1]}")
-            ALLOWED_PORTS+=("${BASH_REMATCH[2]}")
-        else
-            ALLOWED_IPS+=("$entry")
-            ALLOWED_PORTS+=("")
-        fi
-    done
-
-    echo ""
-    echo -e "  Укажи порт, на котором будет слушать прокси."
-    read -rp "  Порт [${PROXY_PORT}]: " input_port
+    read -rp "  Порт прокси [${PROXY_PORT}]: " input_port
     if [[ -n "$input_port" ]]; then
         if [[ "$input_port" =~ ^[0-9]+$ ]] && (( input_port >= 1 && input_port <= 65535 )); then
             PROXY_PORT="$input_port"
@@ -107,17 +79,29 @@ ask_connection_params() {
     fi
 
     echo ""
+    echo -e "  IP-адреса клиентов через запятую (например: 1.2.3.4,10.0.0.0/24)"
+    echo -e "  ${YELLOW}Оставь пустым — разрешить всем.${NC}"
+    read -rp "  IP клиентов: " ip_input
+
+    ALLOWED_IPS=()
+    if [[ -n "$ip_input" ]]; then
+        IFS=',' read -ra raw_ips <<< "$ip_input"
+        for ip in "${raw_ips[@]}"; do
+            ip="${ip// /}"  # убираем пробелы
+            [[ -n "$ip" ]] && ALLOWED_IPS+=("$ip")
+        done
+    fi
+
+    echo ""
+    log_info "Порт прокси: $PROXY_PORT"
     if [[ ${#ALLOWED_IPS[@]} -eq 0 ]]; then
         log_info "Разрешённые клиенты: все (0.0.0.0/0)"
     else
         log_info "Разрешённые клиенты:"
-        for i in "${!ALLOWED_IPS[@]}"; do
-            local display="${ALLOWED_IPS[$i]}"
-            [[ -n "${ALLOWED_PORTS[$i]}" ]] && display+=" (порт клиента: ${ALLOWED_PORTS[$i]})"
-            echo -e "    ${GREEN}•${NC} $display"
+        for ip in "${ALLOWED_IPS[@]}"; do
+            echo -e "    ${GREEN}•${NC} $ip"
         done
     fi
-    log_info "Порт прокси: $PROXY_PORT"
 }
 
 install_squid() {
@@ -154,23 +138,11 @@ configure_squid() {
         # ACL для каждого разрешённого IP/подсети
         {
             for i in "${!ALLOWED_IPS[@]}"; do
-                local ip="${ALLOWED_IPS[$i]}"
-                local port="${ALLOWED_PORTS[$i]}"
-                local acl_name="allowed_client_$i"
-                echo "acl $acl_name src $ip"
-                if [[ -n "$port" ]]; then
-                    echo "acl ${acl_name}_port port $port"
-                fi
+                echo "acl allowed_client_$i src ${ALLOWED_IPS[$i]}"
             done
             echo ""
             for i in "${!ALLOWED_IPS[@]}"; do
-                local acl_name="allowed_client_$i"
-                local port="${ALLOWED_PORTS[$i]}"
-                if [[ -n "$port" ]]; then
-                    echo "http_access allow $acl_name ${acl_name}_port"
-                else
-                    echo "http_access allow $acl_name"
-                fi
+                echo "http_access allow allowed_client_$i"
             done
             echo "http_access deny all"
         } >> "$CONFIG_FILE"
